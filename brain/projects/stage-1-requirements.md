@@ -18,7 +18,7 @@ Establish the foundational engineering scaffolding for the Financial Ledger & Di
 - [x] 10 foundational research notes ingested into `brain/resources/`.
 - [x] CI validation scripts (`scripts/validate_skills.py`, `scripts/validate_brain.py`).
 - [x] GitHub Actions CI workflow skeleton (`.github/workflows/ci.yml`).
-- [ ] Incorporate and formalize SRS (`docs/srs.md`) from v1 draft.
+- [x] Incorporate and formalize SRS (`docs/srs.md`) from v1 draft.
 
 ## Traceability Links
 * Specification: `docs/srs.md`
