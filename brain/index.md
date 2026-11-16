@@ -9,6 +9,7 @@ Welcome to the Obsidian Second Brain knowledge vault for the **Financial Ledger 
 * **[[inbox/]]:** Unprocessed notes, raw research, and incoming technical documentation.
 * **[[projects/]]:** Active deliverable notes, stage trackers, and task breakdowns.
   * [[projects/stage-1-requirements|Stage 1: Requirements & Knowledge Base]]
+  * [[projects/stage-1-review|Stage 1 Review Note]]
 * **[[areas/]]:** Core ongoing technical domains:
   * [[areas/ledger-architecture|Double-Entry Ledger Architecture]]
   * [[areas/concurrency-acid|Concurrency, Locking & ACID Guarantees]]
