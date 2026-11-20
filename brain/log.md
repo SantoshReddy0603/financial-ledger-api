@@ -31,3 +31,19 @@ This file chronologically tracks all agent operations, setup procedures, knowled
   * Authored `docs/skill_evaluations.md` satisfying TQ-7.
   * Re-ran validation scripts with zero errors.
 * **Status:** Stage 1 officially 100% complete. Ready for Stage 2 (Architecture & Design).
+
+---
+
+## 2026-11-20 — Stage 2 Architecture and Design
+
+* **Author:** Developer
+* **Goal:** Produce the SRS §11.2 Stage 2 deliverables and align the repository with the submitted SRS (Java 21, Maven).
+* **Actions Taken:**
+  * `brain-ingest`: four notes added to `brain/inbox/`: hexagonal architecture and provider ports, canonical JSON and hash chains, Argon2id password hashing and session tokens, authentication and sessions.
+  * `brain-refine`: the three reference notes went to `resources/` and the authentication note to `areas/`. `sqlite-wal-locking-mechanics` was updated with the single-writer design. The inbox is now empty, the index is updated and `validate_brain.py` passes.
+  * `brain-query`: used to draft ADR-0001 to ADR-0012. Every ADR cites at least one note, checked by `validate_adrs.py`.
+  * Wrote the architecture, data model, UML and OpenAPI documents, the plan, the traceability matrix, CONTRIBUTING and CHANGELOG.
+  * Built the Java foundation skeleton (48 tests, coverage gate passing).
+  * `local-check`: build, tests, server start, `/health` probe, graceful stop and database removal all PASS.
+  * Wrote [[projects/stage-2-design]] and [[projects/stage-2-review]] (SB-2).
+* **Status:** Stage 2 complete, pending PR review. Next is Stage 3 (implementation and testing) from `docs/plan.md`.
