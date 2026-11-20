@@ -1,6 +1,8 @@
 # Software Requirements Specification (SRS)
 ## Financial Ledger & Digital Wallet API
 
+> **Superseded.** The authoritative specification is the submitted SRS, [`srs.pdf`](srs.pdf) (Java 21, Maven, Javalin, SQLite). Design, plan and traceability documents reference that PDF. This Markdown file is kept as the Stage 1 baseline history only; where it disagrees with `srs.pdf`, the PDF wins.
+
 * **Document Version:** 1.2
 * **Date:** 2026-11-09
 * **Status:** Revised Stage 1 Baseline (Adapting v1.1 Draft)
