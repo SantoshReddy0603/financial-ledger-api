@@ -4,6 +4,8 @@ Validates that all agent skills conform to the agentskills.io specification:
 1. Each skill lives in skills/<skill-name>/SKILL.md
 2. Folder name matches the frontmatter 'name' property.
 3. Frontmatter contains 'name' and 'description'.
+4. The skill cites at least one existing brain note via a [[wikilink]] (SK-1, SB-3).
+5. The skill contains nothing that looks like a credential (SK-8).
 """
 
 import sys
@@ -12,6 +14,22 @@ import re
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / "skills"
+BRAIN_DIR = ROOT / "brain"
+WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
+SECRET_PATTERNS = [
+    re.compile(r"(?i)(api[_-]?key|password|secret|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{20,}"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36}\b"),
+]
+
+
+def resolves_to_brain_note(target: str) -> bool:
+    cleaned = target.strip().rstrip("/")
+    if not cleaned:
+        return False
+    if (BRAIN_DIR / f"{cleaned}.md").is_file() or (BRAIN_DIR / cleaned).is_file():
+        return True
+    return any(BRAIN_DIR.rglob(f"{Path(cleaned).name}.md"))
 
 
 def parse_frontmatter(content: str) -> dict:
@@ -69,6 +87,15 @@ def validate_skills() -> int:
 
         if not description:
             errors.append(f"{skill_file.relative_to(ROOT)}: Frontmatter missing required 'description' field")
+
+        citations = [t for t in WIKILINK.findall(content) if resolves_to_brain_note(t)]
+        if not citations:
+            errors.append(f"{skill_file.relative_to(ROOT)}: Must cite at least one existing brain note as [[wikilink]]")
+
+        for pattern in SECRET_PATTERNS:
+            if pattern.search(content):
+                errors.append(f"{skill_file.relative_to(ROOT)}: Contains text that looks like a credential")
+                break
 
     if errors:
         print("\nSkill validation FAILED with errors:", file=sys.stderr)

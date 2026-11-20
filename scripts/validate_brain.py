@@ -3,6 +3,8 @@
 Validates the Obsidian Second Brain:
 1. Verifies required PARA directories and files (brain/index.md, brain/log.md).
 2. Verifies that all [[wikilinks]] resolve to existing files or directories.
+3. Verifies note frontmatter (title, date, tags, status) and that the status
+   matches the PARA folder holding the note; inbox notes also need a source.
 """
 
 import sys
@@ -13,6 +15,49 @@ ROOT = Path(__file__).resolve().parent.parent
 BRAIN_DIR = ROOT / "brain"
 REQUIRED_DIRS = ["inbox", "projects", "areas", "resources", "archive"]
 REQUIRED_FILES = ["index.md", "log.md"]
+REQUIRED_FIELDS = ["title", "date", "tags", "status"]
+ALLOWED_STATUS = {
+    "inbox": {"inbox"},
+    "projects": {"active", "completed"},
+    "areas": {"area"},
+    "resources": {"resource"},
+    "archive": {"archived"},
+}
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def parse_frontmatter(content: str):
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return None
+    data = {}
+    for line in match.group(1).splitlines():
+        if ":" in line and not line.startswith((" ", "\t", "#")):
+            key, value = line.split(":", 1)
+            data[key.strip()] = value.strip().strip("\"'")
+    return data
+
+
+def frontmatter_errors(file_path: Path, content: str) -> list:
+    rel = file_path.relative_to(BRAIN_DIR)
+    if len(rel.parts) < 2 or rel.parts[0] not in ALLOWED_STATUS:
+        return []
+    label = file_path.relative_to(ROOT)
+    fm = parse_frontmatter(content)
+    if fm is None:
+        return [f"{label}: Missing YAML frontmatter"]
+    problems = [f"{label}: Frontmatter missing '{field}'" for field in REQUIRED_FIELDS if not fm.get(field)]
+    if fm.get("date") and not DATE_PATTERN.match(fm["date"]):
+        problems.append(f"{label}: Frontmatter date must be YYYY-MM-DD")
+    folder = rel.parts[0]
+    if fm.get("status") and fm["status"] not in ALLOWED_STATUS[folder]:
+        allowed = ", ".join(sorted(ALLOWED_STATUS[folder]))
+        problems.append(f"{label}: status '{fm['status']}' not allowed in {folder}/ (expected {allowed})")
+    if folder == "inbox" and not fm.get("source"):
+        problems.append(f"{label}: Inbox notes need a 'source'")
+    if file_path.name != file_path.name.lower() or " " in file_path.name:
+        problems.append(f"{label}: Note filenames must be lowercase kebab-case")
+    return problems
 
 
 def validate_brain() -> int:
@@ -42,6 +87,7 @@ def validate_brain() -> int:
 
     for file_path in md_files:
         content = file_path.read_text(encoding="utf-8")
+        errors.extend(frontmatter_errors(file_path, content))
         matches = wikilink_pattern.findall(content)
 
         for raw_link in matches:
@@ -55,7 +101,6 @@ def validate_brain() -> int:
                 continue
 
             # Strip trailing slash if present (e.g. [[inbox/]])
-            is_dir_link = target_no_heading.endswith("/")
             cleaned_target = target_no_heading.rstrip("/")
 
             # Try direct relative to brain/

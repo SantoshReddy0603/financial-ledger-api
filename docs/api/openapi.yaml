@@ -1,0 +1,648 @@
+openapi: 3.0.3
+info:
+  title: Financial Ledger & Digital Wallet API
+  version: 0.1.0
+  description: |
+    Double-entry wallet ledger with idempotent money movement (SRS docs/srs.pdf).
+
+    * Money fields (`amount`, `balance`) are JSON integers in minor units, never decimals,
+      exponent forms or strings (NFR-API-3).
+    * `sequence`, `entryNumber`, counts, `snapshotSequence`, `nextBefore` and reconciliation
+      totals are decimal **strings** so large integers stay exact (SRS §4.5, BR-12).
+    * Timestamps are UTC RFC 3339 with exactly three fractional digits and `Z` (NFR-API-4).
+    * Identifiers are lowercase UUID v4 (NFR-API-2).
+    * Every response carries `X-Request-Id` (NFR-API-6).
+    * Request bodies are limited to 16,384 bytes; unknown fields and duplicate members are
+      rejected (NFR-API-7, NFR-SEC-1).
+servers:
+  - url: http://127.0.0.1:8080/api/v1
+    description: Local development (loopback only, NFR-SEC-6)
+tags:
+  - name: Operations
+  - name: Users
+  - name: Auth
+  - name: Wallets
+  - name: Transactions
+  - name: Admin
+paths:
+  /health:
+    get:
+      tags: [Operations]
+      summary: Liveness and database reachability (FR-6.1)
+      security: []
+      responses:
+        "200":
+          description: Database probe succeeded
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: OK, version: 0.1.0, database: reachable }
+        "503":
+          description: Database probe failed
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthDegraded" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /users:
+    post:
+      tags: [Users]
+      summary: Register a user (FR-1.1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Registered
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Create a session (FR-7.1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Authenticated
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current session (FR-7.3)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Revoke every session of the current user (FR-7.3)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: User profile with wallets, one snapshot (FR-1.6)
+      security: [{ bearerAuth: [] }, { adminKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      responses:
+        "200":
+          description: User
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserWithWallets" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /users/{userId}/wallets:
+    post:
+      tags: [Wallets]
+      summary: Create a zero-balance wallet (FR-1.2–FR-1.4)
+      security: [{ bearerAuth: [] }, { adminKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/UserId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWalletRequest" }
+      responses:
+        "201":
+          description: Wallet created
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+  /wallets/{walletId}:
+    get:
+      tags: [Wallets]
+      summary: Wallet with balance, one snapshot (FR-1.5)
+      security: [{ bearerAuth: [] }, { adminKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/WalletId" }]
+      responses:
+        "200":
+          description: Wallet
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /wallets/{walletId}/entries:
+    get:
+      tags: [Wallets]
+      summary: Wallet history, newest first (FR-4.6)
+      security: [{ bearerAuth: [] }, { adminKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - name: before
+          in: query
+          description: Exclusive cursor; positive decimal entry number within signed 64-bit range.
+          schema: { $ref: "#/components/schemas/IntegerString" }
+      responses:
+        "200":
+          description: Page of entries
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EntryPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /transfers:
+    post:
+      tags: [Transactions]
+      summary: Idempotent wallet-to-wallet transfer (FR-2.1–FR-2.10)
+      description: Requires a USER session even for administrators (NFR-API-5).
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferRequest" }
+      responses:
+        "201": { $ref: "#/components/responses/TransactionCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "503": { $ref: "#/components/responses/StorageBusy" }
+  /transactions/{transactionId}:
+    get:
+      tags: [Transactions]
+      summary: Transaction with derived reversedBy (FR-2.11)
+      description: A user may read a transaction only if one of its entries is on their wallet (NFR-SEC-7).
+      security: [{ bearerAuth: [] }, { adminKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/TransactionId" }]
+      responses:
+        "200":
+          description: Transaction
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/wallets/{walletId}/funding:
+    post:
+      tags: [Admin]
+      summary: Fund a wallet from the currency's SYSTEM account (FR-1.7)
+      security: [{ adminKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FundingRequest" }
+      responses:
+        "201": { $ref: "#/components/responses/TransactionCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "503": { $ref: "#/components/responses/StorageBusy" }
+  /admin/transactions/{transactionId}/reversal:
+    post:
+      tags: [Admin]
+      summary: Reverse a FUNDING or TRANSFER transaction (FR-4.2–FR-4.4)
+      security: [{ adminKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/TransactionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        description: May be omitted; an omitted body fingerprints as `reason = null`.
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReversalRequest" }
+      responses:
+        "201": { $ref: "#/components/responses/TransactionCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "503": { $ref: "#/components/responses/StorageBusy" }
+  /admin/reconciliation:
+    get:
+      tags: [Admin]
+      summary: Run checks C1–C7 on one read snapshot (FR-5.1–FR-5.5)
+      security: [{ adminKey: [] }]
+      responses:
+        "200":
+          description: Checks completed (CONSISTENT or INCONSISTENT)
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReconciliationReport" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Opaque session token from POST /auth/login (256-bit, stored only as SHA-256).
+    adminKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Administrator key; configured as SHA-256 hashes in LEDGER_ADMIN_KEYS.
+  headers:
+    X-Request-Id:
+      description: Echo of a valid supplied id (1–64 of [A-Za-z0-9_-]) or a generated UUID.
+      schema: { type: string }
+    Idempotency-Replayed:
+      description: Present with value `true` when the stored original response is replayed (FR-2.6).
+      schema: { type: string, enum: ["true"] }
+    Retry-After:
+      schema: { type: integer }
+    Allow:
+      schema: { type: string }
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+    WalletId:
+      name: walletId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+    TransactionId:
+      name: transactionId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Exactly one header; scoped to the authenticated principal (FR-2.2).
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{16,64}$" }
+  schemas:
+    Uuid:
+      type: string
+      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    Timestamp:
+      type: string
+      pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+      example: "2026-11-20T10:15:30.123Z"
+    IntegerString:
+      type: string
+      description: Non-negative base-10 integer without leading zeros (except "0").
+      pattern: "^(0|[1-9][0-9]*)$"
+    Hash:
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+    Currency:
+      type: string
+      pattern: "^[A-Z]{3}$"
+      description: Must be a configured currency (default INR, USD, EUR).
+    Amount:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 1000000000000
+      description: JSON integer token in minor units; decimals, exponents and strings return INVALID_AMOUNT.
+    ShortText:
+      type: string
+      nullable: true
+      maxLength: 140
+      description: 0–140 Unicode scalar values, no control characters.
+    Health:
+      type: object
+      required: [status, version, database]
+      properties:
+        status: { type: string, enum: [OK] }
+        version: { type: string }
+        database: { type: string, enum: [reachable] }
+    HealthDegraded:
+      type: object
+      required: [status, version, database, error]
+      properties:
+        status: { type: string, enum: [DEGRADED] }
+        version: { type: string }
+        database: { type: string, enum: [unreachable] }
+        error: { $ref: "#/components/schemas/ErrorBody" }
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [displayName, loginName, password]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 100 }
+        loginName: { type: string, pattern: "^[a-z0-9_-]{3,64}$" }
+        password: { type: string, minLength: 12, maxLength: 128, format: password }
+    User:
+      type: object
+      required: [userId, displayName, createdAt]
+      properties:
+        userId: { $ref: "#/components/schemas/Uuid" }
+        displayName: { type: string }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    UserWithWallets:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [wallets]
+          properties:
+            wallets:
+              type: array
+              items: { $ref: "#/components/schemas/Wallet" }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [loginName, password]
+      properties:
+        loginName: { type: string }
+        password: { type: string, format: password }
+    Session:
+      type: object
+      required: [accessToken, tokenType, expiresAt, userId]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { $ref: "#/components/schemas/Timestamp" }
+        userId: { $ref: "#/components/schemas/Uuid" }
+    CreateWalletRequest:
+      type: object
+      additionalProperties: false
+      required: [currency]
+      properties:
+        currency: { $ref: "#/components/schemas/Currency" }
+    Wallet:
+      type: object
+      required: [walletId, userId, currency, balance, createdAt]
+      properties:
+        walletId: { $ref: "#/components/schemas/Uuid" }
+        userId: { $ref: "#/components/schemas/Uuid" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        balance: { type: integer, format: int64, minimum: 0, maximum: 9007199254740991 }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    TransferRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceWalletId, destinationWalletId, amount, currency]
+      properties:
+        sourceWalletId: { $ref: "#/components/schemas/Uuid" }
+        destinationWalletId: { $ref: "#/components/schemas/Uuid" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        reference: { $ref: "#/components/schemas/ShortText" }
+    FundingRequest:
+      type: object
+      additionalProperties: false
+      required: [amount, currency]
+      properties:
+        amount: { $ref: "#/components/schemas/Amount" }
+        currency: { $ref: "#/components/schemas/Currency" }
+    ReversalRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { $ref: "#/components/schemas/ShortText" }
+    Entry:
+      type: object
+      required: [entryNumber, accountId, direction, amount, currency, createdAt]
+      properties:
+        entryNumber: { $ref: "#/components/schemas/IntegerString" }
+        accountId: { $ref: "#/components/schemas/Uuid" }
+        direction: { type: string, enum: [DEBIT, CREDIT] }
+        amount: { $ref: "#/components/schemas/Amount" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    Transaction:
+      type: object
+      required: [transactionId, type, sequence, sourceAccountId, destinationAccountId, amount, currency,
+                 reference, reason, reversalOf, reversedBy, createdAt, previousHash, hash, entries]
+      properties:
+        transactionId: { $ref: "#/components/schemas/Uuid" }
+        type: { type: string, enum: [FUNDING, TRANSFER, REVERSAL] }
+        sequence: { $ref: "#/components/schemas/IntegerString" }
+        sourceAccountId: { allOf: [{ $ref: "#/components/schemas/Uuid" }], description: Debited account }
+        destinationAccountId: { allOf: [{ $ref: "#/components/schemas/Uuid" }], description: Credited account }
+        amount: { $ref: "#/components/schemas/Amount" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        reference: { type: string, nullable: true, description: Only on TRANSFER }
+        reason: { type: string, nullable: true, description: Only on REVERSAL }
+        reversalOf: { type: string, nullable: true, description: Original transaction id; REVERSAL only }
+        reversedBy:
+          type: string
+          nullable: true
+          description: Derived on GET; null in POST responses and replays. Excluded from the hash.
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+        previousHash: { $ref: "#/components/schemas/Hash" }
+        hash: { $ref: "#/components/schemas/Hash" }
+        entries:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: Ordered by entryNumber (DEBIT first).
+          items: { $ref: "#/components/schemas/Entry" }
+    WalletEntry:
+      type: object
+      required: [entryNumber, transactionId, direction, amount, currency, createdAt]
+      properties:
+        entryNumber: { $ref: "#/components/schemas/IntegerString" }
+        transactionId: { $ref: "#/components/schemas/Uuid" }
+        direction: { type: string, enum: [DEBIT, CREDIT] }
+        amount: { $ref: "#/components/schemas/Amount" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    EntryPage:
+      type: object
+      required: [items, nextBefore]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/WalletEntry" }
+        nextBefore:
+          allOf: [{ $ref: "#/components/schemas/IntegerString" }]
+          nullable: true
+          description: Last returned entryNumber when more entries exist, otherwise null.
+    CurrencyTotals:
+      type: object
+      required: [currency, totalCredits, totalDebits]
+      properties:
+        currency: { $ref: "#/components/schemas/Currency" }
+        totalCredits: { $ref: "#/components/schemas/IntegerString" }
+        totalDebits: { $ref: "#/components/schemas/IntegerString" }
+    Discrepancy:
+      type: object
+      required: [check, subjectId, expected, actual]
+      properties:
+        check: { type: string, enum: [C1, C2, C3, C4, C5, C6, C7] }
+        subjectId: { type: string, nullable: true }
+        expected: { type: string }
+        actual: { type: string }
+    ReconciliationReport:
+      type: object
+      required: [status, checkedAt, snapshotSequence, transactionCount, entryCount, totals, discrepancies]
+      properties:
+        status: { type: string, enum: [CONSISTENT, INCONSISTENT] }
+        checkedAt: { $ref: "#/components/schemas/Timestamp" }
+        snapshotSequence: { $ref: "#/components/schemas/IntegerString" }
+        transactionCount: { $ref: "#/components/schemas/IntegerString" }
+        entryCount: { $ref: "#/components/schemas/IntegerString" }
+        totals:
+          type: array
+          description: One item per configured currency, including zero totals.
+          items: { $ref: "#/components/schemas/CurrencyTotals" }
+        discrepancies:
+          type: array
+          items: { $ref: "#/components/schemas/Discrepancy" }
+    FieldError:
+      type: object
+      required: [field, rule]
+      properties:
+        field: { type: string }
+        rule: { type: string }
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [VALIDATION_ERROR, INVALID_AMOUNT, MALFORMED_ID, MISSING_IDEMPOTENCY_KEY,
+                 INVALID_IDEMPOTENCY_KEY, UNSUPPORTED_CURRENCY, UNAUTHENTICATED, FORBIDDEN,
+                 NOT_FOUND, METHOD_NOT_ALLOWED, LOGIN_ALREADY_EXISTS, WALLET_ALREADY_EXISTS,
+                 ALREADY_REVERSED, PAYLOAD_TOO_LARGE, UNSUPPORTED_MEDIA_TYPE, INSUFFICIENT_FUNDS,
+                 CURRENCY_MISMATCH, SAME_WALLET_TRANSFER, BALANCE_LIMIT_EXCEEDED,
+                 NUMERIC_LIMIT_EXCEEDED, IDEMPOTENCY_KEY_REUSED, REVERSAL_NOT_ALLOWED,
+                 TOO_MANY_REQUESTS, STORAGE_BUSY, DATABASE_UNAVAILABLE, INTERNAL_ERROR]
+        message: { type: string, description: Human-readable; may change. Codes are stable. }
+        details:
+          type: array
+          items: { $ref: "#/components/schemas/FieldError" }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: "#/components/schemas/ErrorBody" }
+  responses:
+    NoContent:
+      description: Done; no body
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+    TransactionCreated:
+      description: Committed transaction, or the stored original on replay (FR-2.6)
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/X-Request-Id" }
+        Idempotency-Replayed: { $ref: "#/components/headers/Idempotency-Replayed" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Transaction" }
+    BadRequest:
+      description: VALIDATION_ERROR, INVALID_AMOUNT, MALFORMED_ID, MISSING_IDEMPOTENCY_KEY, INVALID_IDEMPOTENCY_KEY or UNSUPPORTED_CURRENCY
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: VALIDATION_ERROR, message: Invalid request, details: [{ field: currency, rule: required }] } }
+    Unauthenticated:
+      description: UNAUTHENTICATED (missing, invalid, expired or revoked credential)
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: FORBIDDEN (role or ownership)
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: NOT_FOUND
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    MethodNotAllowed:
+      description: METHOD_NOT_ALLOWED
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/X-Request-Id" }
+        Allow: { $ref: "#/components/headers/Allow" }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Conflict:
+      description: LOGIN_ALREADY_EXISTS, WALLET_ALREADY_EXISTS or ALREADY_REVERSED
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    PayloadTooLarge:
+      description: PAYLOAD_TOO_LARGE (body over 16,384 bytes)
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    UnsupportedMediaType:
+      description: UNSUPPORTED_MEDIA_TYPE (non-empty body that is not application/json UTF-8)
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unprocessable:
+      description: INSUFFICIENT_FUNDS, CURRENCY_MISMATCH, SAME_WALLET_TRANSFER, BALANCE_LIMIT_EXCEEDED, NUMERIC_LIMIT_EXCEEDED, IDEMPOTENCY_KEY_REUSED or REVERSAL_NOT_ALLOWED
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    TooManyRequests:
+      description: TOO_MANY_REQUESTS (authentication or registration throttle)
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/X-Request-Id" }
+        Retry-After: { $ref: "#/components/headers/Retry-After" }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    StorageBusy:
+      description: STORAGE_BUSY (write lock not acquired in time; retry with the same key)
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/X-Request-Id" }
+        Retry-After: { $ref: "#/components/headers/Retry-After" }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    InternalError:
+      description: INTERNAL_ERROR
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }

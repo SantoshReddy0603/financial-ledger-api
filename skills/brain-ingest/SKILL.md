@@ -23,7 +23,7 @@ Execute this skill when:
 1. **Analyze Source Material:**
    * Read the input text or file.
    * Extract the primary thesis, technical mechanisms, architectural trade-offs, and failure modes.
-   * Identify direct relevance to Financial Ledger requirements (`FR-1` to `FR-5`, `NFR-1` to `NFR-6`).
+   * Identify direct relevance to Financial Ledger requirements (`FR-x.y`, `NFR-<area>-n`, `SK-n` as numbered in the SRS).
 
 2. **Generate Structured Note:**
    * Create a new file in `brain/inbox/<slug-title>.md`.
@@ -50,3 +50,16 @@ Execute this skill when:
 4. **Verify Integrity:**
    * Ensure file name is lowercase kebab-case.
    * Run link check to ensure all new `[[wikilinks]]` either exist or are designated placeholders.
+
+---
+
+## 3. Follow-up
+
+Inbox notes are not distilled knowledge yet. Run the `brain-refine` skill to move them into PARA folders before an ADR or skill cites them.
+
+---
+
+## 4. Brain Citations
+
+* [[resources/agentskills-specification-standards|Agent Skills Specification and Evaluation Standards]]
+* [[index]]: vault structure and PARA folders.

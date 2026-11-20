@@ -54,3 +54,21 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Java / Maven build output
+target/
+.mvn/wrapper/maven-wrapper.jar
+*.class
+*.log
+hs_err_pid*
+
+# Runtime data (default LEDGER_DB_PATH is data/ledger.db)
+data/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Local Obsidian vault settings opened at the repository root
+/.obsidian/
